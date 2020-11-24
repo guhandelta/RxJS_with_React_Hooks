@@ -1,31 +1,67 @@
 import React, { useEffect, useState } from 'react'
-import { from } from 'rxjs'
-import { map, filter, delay, mergeMap } from 'rxjs/operators'
+import { from, BehaviorSubject } from 'rxjs'
+// BehaviorSubject => Requires an initial value and emits the current value to new subscribers
+// A BehaviorSubject holds one value. When it is subscribed it emits the value immediately. A Subject doesn't-
+//-  hold a value.
+import { distinctUntilChanged, filter, debounceTime, mergeMap } from 'rxjs/operators'
+import './App.css'
 
-let numbersObservable = from([1,2,3,4,5]);
-let squaredNumbers = numbersObservable.pipe(
-  filter(val => val > 2),
-  // delay(1000) - kindof works, but only shows the last number, this is due to the fact that the delay-
-  //- is applied to all the numbers instantly, which is not something that is required
-  // This can be accomplished by mergeMapping the value into a new observable, that will be delayed
-  mergeMap(val => from([val]).pipe(delay(500*val))),
-  map(val => val * val)
-);
+const getPokemonByName = async name =>{
+  const { results } = await fetch("https://pokeapi.co/api/v2/ability/?limit=1000").then(res => res.json());
+  console.log(results.filter(pokemon => pokemon.name.includes(name)));
+  return results.filter(pokemon => pokemon.name.includes(name));
+}
 
-function App(){
+// BehaviorSubject will be/act the preset pipeline for the value processing
+let searchSubject = new BehaviorSubject("");
+let searchResultObservable = searchSubject.pipe(
+  filter(val => val.length > 1), //Make sure that the search results don't thrown any names shorter results
+  debounceTime(750), // wait for the user to complete the typing
+  distinctUntilChanged(), // Preventing a new search, when the user clears the entry and types the same
+  // mapping the value to the new observable created from the getPokemonByName() Promise
+  mergeMap(val => from(getPokemonByName(val)))
+)
 
-  const[ currentNumber, setCurrentNumber ] = useState(0);
+// Custom hook
+const useObservable = (observable, setter) => {
   useEffect(()=>{
-    let subscription = squaredNumbers.subscribe(res =>
-      setCurrentNumber(res)
-    );
+    let subscription = observable.subscribe(res =>
+      setter(res)
+      );
+      
+      return () => subscription.unsubscribe();
+    }, []);
+  }
+  
+function App(){
+  const[ search, setSearch ] = useState('');
+  const[ results, setResults ] = useState([]);
+  
+  useObservable(searchResultObservable, setResults);
 
-    return () => subscription.unsubscribe();
-  }, []);
+  const handleSearchChange = e =>{
+    const searchName = e.target.value;
+    setSearch(searchName);
+    searchSubject.next(searchName);
+  }
+
   return (
     <div className="App">
-      <h1>React with RxJS</h1>
-      <h6>The current number is: {currentNumber}</h6>
+      &emsp;&emsp;&emsp;<h1>React with RxJS</h1>
+      <br/>
+      <br/>
+      <br/>
+      <br/>
+      <br/>
+      <input 
+        type="text" 
+        placeholder="Search" 
+        value={search} 
+        onChange={handleSearchChange} 
+      /> <br/><br/><br/>
+      {results.map(pokemon => (
+        <div key={pokemon.name}>{pokemon.name}</div>
+      ))}
     </div>
   )
 }
